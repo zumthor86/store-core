@@ -1,0 +1,29 @@
+[project]
+name = "store-core"
+version = "0.1.0"
+description = "Shared market-data storage contracts for the workspace. Owns the canonical on-disk price store (hive-partitioned Parquet OHLCV): schema-of-record, Polars reads, and append-then-merge writes. Producer (Hermes) writes through it; consumers (Hephaestus backtester, ares) read through it — no HTTP, no per-consumer pl.read_parquet on foreign paths."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "polars",
+    "pandas",
+    "pyarrow",
+]
+
+# Unlike ingest-core, this library DOES own storage — the whole point is a single
+# owner of the Parquet schema + merge semantics. It owns no scheduling, no domain
+# logic, and no HTTP: it reads and writes files, nothing more.
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["store_core*"]
