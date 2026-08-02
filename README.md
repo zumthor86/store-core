@@ -21,7 +21,8 @@ place, and no consumer couples to file paths.
 | Module | Purpose |
 |---|---|
 | `store_core.PriceStore` | Read (Polars, lazy scan + predicate pushdown) and write (pandas/pyarrow, merge + atomic rename) for the OHLCV store. `base_dir` is configurable so a consumer points it at the producer's prices directory. |
-| `store_core.types` | Schema-of-record: `PRICE_COLUMNS`, `OHLCV_FLOAT_COLUMNS`, `PRICE_PARQUET_SCHEMA`. |
+| `store_core.RvForecastStore` | Versioned, point-in-time realized-volatility forecast history — read/write contract for Hermes's RV forecast store. Raises `MethodologyMismatchError` / `RegenerationInProgressError` rather than returning stale or half-written data. |
+| `store_core.types` | Schema-of-record: `PRICE_COLUMNS`, `OHLCV_FLOAT_COLUMNS`, `PRICE_PARQUET_SCHEMA`, `RV_FORECAST_COLUMNS`, `RV_FORECAST_VALUE_COLUMNS`, `RV_FORECAST_HORIZONS`, `RV_FORECAST_PARQUET_SCHEMA`. |
 
 ## Usage
 
@@ -48,3 +49,13 @@ pip install -e ../store-core
 ```bash
 pytest tests/unit -q     # hermetic: temp Parquet tree, no network
 ```
+
+## Changelog
+
+Dated, one-line entries for changes that affect consumers — new modules, contract
+or schema changes, breaking behavior. Keep entries short; `git log` has the detail.
+Update this **in the same change** that touches this library, and mention it in
+whichever consuming project's `CLAUDE.md` you're also updating.
+
+- **2026-07-26** (`b6be45c`) — Added `RvForecastStore`: versioned, point-in-time RV forecast history, consumed by Hephaestus's backtester.
+- **2026-07-24** (`52cdaee`) — Initial extraction: `PriceStore` (hive-partitioned Parquet OHLCV), producer Hermes / consumer Hephaestus backtester.
