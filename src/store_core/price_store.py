@@ -82,6 +82,35 @@ class PriceStore:
         """Hive path for one symbol's file: ``exchange=<XX>/<TICKER>.parquet``."""
         return self.base_dir / f"exchange={exchange}" / f"{ticker.upper()}.parquet"
 
+    def exchanges_for(self, ticker: str) -> List[str]:
+        """Every exchange partition currently on disk for ``ticker``.
+
+        Globs ``exchange=*/<TICKER>.parquet`` rather than reading Parquet metadata, so a
+        caller can find superseded listings (e.g. a stale foreign partition for a symbol
+        now resolved to ``US``) without paying for a full read.
+        """
+        upper = ticker.upper()
+        exchanges: List[str] = []
+        if not self.base_dir.exists():
+            return exchanges
+        for candidate in self.base_dir.glob(f"exchange=*/{upper}.parquet"):
+            partition = candidate.parent.name
+            if partition.startswith("exchange="):
+                exchanges.append(partition[len("exchange="):])
+        return exchanges
+
+    def remove(self, exchange: str, ticker: str) -> bool:
+        """Delete the partition file for ``(exchange, ticker)`` if it exists.
+
+        Idempotent: returns ``False`` (not an error) when there is nothing to delete, so a
+        reconciliation pass can be safely re-run after a partial failure.
+        """
+        target = self.path(exchange, ticker)
+        if not target.exists():
+            return False
+        target.unlink()
+        return True
+
     # ---- reads (Polars) --------------------------------------------------
 
     def read(

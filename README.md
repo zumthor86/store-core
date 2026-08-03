@@ -57,5 +57,6 @@ or schema changes, breaking behavior. Keep entries short; `git log` has the deta
 Update this **in the same change** that touches this library, and mention it in
 whichever consuming project's `CLAUDE.md` you're also updating.
 
+- **2026-08-02** — Added `PriceStore.exchanges_for(ticker)` and `PriceStore.remove(exchange, ticker)`: list/remove a symbol's exchange partitions, for cleaning up a superseded (e.g. stale foreign) listing once a ticker resolves to a different canonical exchange. Consumed by Hermes's foreign-listing reconciliation (`specs/001-fix-foreign-listing-priority`).
 - **2026-07-26** (`b6be45c`) — Added `RvForecastStore`: versioned, point-in-time RV forecast history, consumed by Hephaestus's backtester.
 - **2026-07-24** (`52cdaee`) — Initial extraction: `PriceStore` (hive-partitioned Parquet OHLCV), producer Hermes / consumer Hephaestus backtester.

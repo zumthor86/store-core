@@ -101,3 +101,48 @@ def test_missing_store_returns_empty_not_error(tmp_path):
 
 def test_empty_upsert_is_noop(store):
     assert store.upsert(pd.DataFrame(), "US", "AAPL") == 0
+
+
+def test_exchanges_for_lists_every_partition(store):
+    store.upsert(_rows("TSEM", "US", ["2025-01-02"]), "US", "TSEM")
+    store.upsert(_rows("TSEM", "TA", ["2025-01-02"]), "TA", "TSEM")
+    assert set(store.exchanges_for("TSEM")) == {"US", "TA"}
+
+
+def test_exchanges_for_single_partition_symbol(store):
+    store.upsert(_rows("AAPL", "US", ["2025-01-02"]), "US", "AAPL")
+    assert store.exchanges_for("AAPL") == ["US"]
+
+
+def test_exchanges_for_unknown_symbol_is_empty(store):
+    assert store.exchanges_for("NOPE") == []
+
+
+def test_exchanges_for_on_missing_store_is_empty(tmp_path):
+    store = PriceStore(base_dir=tmp_path / "does_not_exist")
+    assert store.exchanges_for("AAPL") == []
+
+
+def test_remove_deletes_the_partition_file(store):
+    store.upsert(_rows("TSEM", "TA", ["2025-01-02"]), "TA", "TSEM")
+    assert store.path("TA", "TSEM").exists()
+    removed = store.remove("TA", "TSEM")
+    assert removed is True
+    assert not store.path("TA", "TSEM").exists()
+
+
+def test_remove_leaves_other_partitions_for_the_same_symbol_untouched(store):
+    store.upsert(_rows("TSEM", "US", ["2025-01-02"]), "US", "TSEM")
+    store.upsert(_rows("TSEM", "TA", ["2025-01-02"]), "TA", "TSEM")
+    store.remove("TA", "TSEM")
+    assert store.exchanges_for("TSEM") == ["US"]
+    df = store.read(["TSEM"])
+    assert df["exchange"].unique().to_list() == ["US"]
+
+
+def test_remove_is_idempotent_when_nothing_to_delete(store):
+    assert store.remove("TA", "NOPE") is False
+    # Calling it twice in a row (simulating a re-run after partial failure) is also safe.
+    store.upsert(_rows("TSEM", "TA", ["2025-01-02"]), "TA", "TSEM")
+    assert store.remove("TA", "TSEM") is True
+    assert store.remove("TA", "TSEM") is False
