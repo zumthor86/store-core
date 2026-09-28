@@ -6,6 +6,7 @@ layout happens in exactly one place.
 """
 from __future__ import annotations
 
+import polars as pl
 import pyarrow as pa
 
 # Physical column order of a per-symbol Parquet file. ``symbol`` and ``exchange``
@@ -84,3 +85,33 @@ RV_FORECAST_PARQUET_SCHEMA: pa.Schema = pa.schema([
     # Diagnostic only — it never affects a value.
     pa.field("source",           pa.string()),
 ])
+
+
+# --- intraday bar store --------------------------------------------------------------
+#
+# One continuous, back-adjusted series per symbol (futures: ratio-spliced across rolls; stocks:
+# split/dividend-adjusted). ``factor`` = adjusted / raw, so a raw contract or share price — the one
+# costs and fills are charged on — is always ``price / factor``.
+
+#: Physical column order within a bar partition file.
+BAR_COLUMNS: tuple[str, ...] = (
+    "start", "session", "open", "high", "low", "close", "volume", "factor", "instrument_id", "despiked",
+)
+
+BAR_POLARS_SCHEMA: dict = {
+    # Bar OPEN time, New York wall clock, no time zone.
+    "start": pl.Datetime("us"),
+    # Trading session the bar belongs to. Futures: the date of start + 6h (an 18:00 ET open belongs to the
+    # next day's session); stocks: the calendar date.
+    "session": pl.Date,
+    "open": pl.Float64,
+    "high": pl.Float64,
+    "low": pl.Float64,
+    "close": pl.Float64,
+    "volume": pl.Float64,
+    "factor": pl.Float64,
+    # Futures: the contract the bar came from (a change marks a roll). Null for stocks.
+    "instrument_id": pl.UInt32,
+    # True where the producer clipped an off-market print. Null where the producer does not de-spike.
+    "despiked": pl.Boolean,
+}

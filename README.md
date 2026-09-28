@@ -22,7 +22,8 @@ place, and no consumer couples to file paths.
 |---|---|
 | `store_core.PriceStore` | Read (Polars, lazy scan + predicate pushdown) and write (pandas/pyarrow, merge + atomic rename) for the OHLCV store. `base_dir` is configurable so a consumer points it at the producer's prices directory. |
 | `store_core.RvForecastStore` | Versioned, point-in-time realized-volatility forecast history — read/write contract for Hermes's RV forecast store. Raises `MethodologyMismatchError` / `RegenerationInProgressError` rather than returning stale or half-written data. |
-| `store_core.types` | Schema-of-record: `PRICE_COLUMNS`, `OHLCV_FLOAT_COLUMNS`, `PRICE_PARQUET_SCHEMA`, `RV_FORECAST_COLUMNS`, `RV_FORECAST_VALUE_COLUMNS`, `RV_FORECAST_HORIZONS`, `RV_FORECAST_PARQUET_SCHEMA`. |
+| `store_core.BarStore` | Intraday bars (1m / 1h): one continuous back-adjusted series per symbol, `freq=<f>/source=<databento|eodhd>/symbol=<SYM>/year=<YYYY>/data.parquet`, `base_dir` from `BARS_DIR`. Whole-series `replace` only (a roll or split rescales all earlier history), swapped in with two directory renames; `read` raises `LookupError` for an unknown symbol rather than returning an empty frame. |
+| `store_core.types` | Schema-of-record: `PRICE_COLUMNS`, `OHLCV_FLOAT_COLUMNS`, `PRICE_PARQUET_SCHEMA`, `RV_FORECAST_COLUMNS`, `RV_FORECAST_VALUE_COLUMNS`, `RV_FORECAST_HORIZONS`, `RV_FORECAST_PARQUET_SCHEMA`, `BAR_COLUMNS`, `BAR_POLARS_SCHEMA`. |
 
 ## Usage
 
@@ -60,3 +61,4 @@ whichever consuming project's `CLAUDE.md` you're also updating.
 - **2026-08-02** — Added `PriceStore.exchanges_for(ticker)` and `PriceStore.remove(exchange, ticker)`: list/remove a symbol's exchange partitions, for cleaning up a superseded (e.g. stale foreign) listing once a ticker resolves to a different canonical exchange. Consumed by Hermes's foreign-listing reconciliation (`specs/001-fix-foreign-listing-priority`).
 - **2026-07-26** (`b6be45c`) — Added `RvForecastStore`: versioned, point-in-time RV forecast history, consumed by Hephaestus's backtester.
 - **2026-07-24** (`52cdaee`) — Initial extraction: `PriceStore` (hive-partitioned Parquet OHLCV), producer Hermes / consumer Hephaestus backtester.
+- **2026-09-28** — Added `BarStore` + `BAR_COLUMNS` / `BAR_POLARS_SCHEMA`: the intraday bar store (Databento futures, EODHD 1-minute stocks), replacing the loose files in Hermes's zigzag notebook folder. Producer: Hermes (`scripts/migrate_bars_to_store.py` loaded the existing series).

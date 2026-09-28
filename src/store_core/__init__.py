@@ -1,7 +1,7 @@
 """store-core: shared market-data storage contracts.
 
 Owns the workspace's cross-consumed on-disk stores — the hive-partitioned Parquet OHLCV price
-store, and the versioned point-in-time realized-volatility forecast history. Producers write
+store, the intraday bar store, and the versioned point-in-time realized-volatility forecast history. Producers write
 through these classes and consumers read through them, so the layout is a real contract rather
 than a path each caller reconstructs for itself.
 
@@ -9,6 +9,7 @@ Storage only: no scheduling, no HTTP, and no domain logic.
 """
 from __future__ import annotations
 
+from .bar_store import BarStore
 from .price_store import PriceStore
 from .rv_forecast_store import (
     MethodologyMismatchError,
@@ -16,6 +17,8 @@ from .rv_forecast_store import (
     RvForecastStore,
 )
 from .types import (
+    BAR_COLUMNS,
+    BAR_POLARS_SCHEMA,
     EOD_COLUMNS,
     OHLCV_FLOAT_COLUMNS,
     PRICE_COLUMNS,
@@ -27,6 +30,9 @@ from .types import (
 )
 
 __all__ = [
+    "BarStore",
+    "BAR_COLUMNS",
+    "BAR_POLARS_SCHEMA",
     "PriceStore",
     "PRICE_COLUMNS",
     "OHLCV_FLOAT_COLUMNS",
