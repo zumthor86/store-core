@@ -12,3 +12,6 @@ build/
 Thumbs.db
 .vscode/
 .idea/
+
+# Claude Code worktrees (separate checkouts)
+.claude/worktrees/
