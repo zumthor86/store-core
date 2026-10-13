@@ -130,6 +130,17 @@ def test_complement_write_merges_without_clobbering_the_first(store):
     assert set(df["source"].to_list()) == {"screen", "complement"}
 
 
+def test_an_unreadable_partition_stops_the_write_and_is_left_as_it_is(store):
+    """Merging needs the old rows. Writing only the new ones would delete every other symbol."""
+    store.write_date_partition(_rows(["AAPL"]), date(2024, 1, 2), M1)
+    part_file = next(store.base_dir.rglob("*.parquet"))
+    part_file.write_bytes(b"not a parquet file")
+    with pytest.raises(RuntimeError, match="unreadable"):
+        store.write_date_partition(_rows(["SPY"]), date(2024, 1, 2), M1)
+    assert part_file.read_bytes() == b"not a parquet file"
+    assert [p.name for p in part_file.parent.iterdir()] == [part_file.name]
+
+
 # --- regeneration: readers never see a mixture (FR-015, FR-016) -------------------------
 
 

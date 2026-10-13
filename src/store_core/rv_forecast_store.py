@@ -350,9 +350,11 @@ class RvForecastStore:
                 existing = pl.read_parquet(existing_file)
                 existing = existing.join(clean.select("symbol"), on="symbol", how="anti")
                 merged = pl.concat([existing, clean], how="vertical_relaxed")
-            except Exception:
-                logger.warning("existing partition %s is unreadable and is overwritten", existing_file, exc_info=True)
-                merged = clean
+            except Exception as exc:
+                # Writing only the new rows would delete every other symbol of the day.
+                raise RuntimeError(
+                    f"existing partition {existing_file} is unreadable; it is left as it is"
+                ) from exc
         else:
             merged = clean
         merged = merged.unique(subset=["symbol"], keep="last").sort("symbol")

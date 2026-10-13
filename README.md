@@ -62,3 +62,4 @@ whichever consuming project's `CLAUDE.md` you're also updating.
 - **2026-07-26** (`b6be45c`) — Added `RvForecastStore`: versioned, point-in-time RV forecast history, consumed by Hephaestus's backtester.
 - **2026-07-24** (`52cdaee`) — Initial extraction: `PriceStore` (hive-partitioned Parquet OHLCV), producer Hermes / consumer Hephaestus backtester.
 - **2026-09-28** — Added `BarStore` + `BAR_COLUMNS` / `BAR_POLARS_SCHEMA`: the intraday bar store (Databento futures, EODHD 1-minute stocks), replacing the loose files in Hermes's zigzag notebook folder. Producer: Hermes (`scripts/migrate_bars_to_store.py` loaded the existing series).
+- **2026-10-13** — `RvForecastStore.write_date_partition` raises `RuntimeError` when the day's existing partition is unreadable, and leaves the file as it is. Before, it logged a warning and replaced the partition with only the new rows.
