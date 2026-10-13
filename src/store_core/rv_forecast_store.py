@@ -29,7 +29,7 @@ import shutil
 import tempfile
 from datetime import date, datetime
 from pathlib import Path
-from typing import Iterable, Optional, Sequence, Union
+from typing import Optional, Sequence, Union
 
 import polars as pl
 

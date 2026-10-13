@@ -17,7 +17,7 @@ import os
 import tempfile
 from datetime import date, datetime
 from pathlib import Path
-from typing import Iterable, List, Optional, Sequence, Union
+from typing import List, Optional, Sequence, Union
 
 import pandas as pd
 import polars as pl
