@@ -13,6 +13,7 @@ prices directory explicitly.
 """
 from __future__ import annotations
 
+import logging
 import os
 import tempfile
 from datetime import date, datetime
@@ -30,6 +31,9 @@ DateLike = Union[date, datetime, str]
 
 _DEFAULT_BASE_DIR = "data/prices"
 _MIN_DATE = "1900-01-01"
+
+
+logger = logging.getLogger(__name__)
 
 
 def _default_base_dir() -> str:
@@ -149,6 +153,9 @@ class PriceStore:
                 lf = lf.filter(pl.col("exchange").is_in([e.strip().upper() for e in exchanges]))
             df = lf.collect()
         except Exception:
+            # a store that does not exist yet is the normal "no data" case
+            logger.log(logging.WARNING if self.base_dir.exists() else logging.DEBUG,
+                       "price read failed at %s; an empty frame is returned", self.base_dir, exc_info=True)
             return pl.DataFrame()
 
         if df.is_empty():

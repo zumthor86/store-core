@@ -23,6 +23,7 @@ quality gate that guards promotion lives in the producer, one level above.
 """
 from __future__ import annotations
 
+import logging
 import json
 import os
 import shutil
@@ -41,6 +42,9 @@ _DEFAULT_BASE_DIR = "data/rv_forecast"
 _CURRENT = "CURRENT"
 _LOCK = "REGENERATING"
 _PART_FILE = "part.parquet"
+
+
+logger = logging.getLogger(__name__)
 
 
 class RegenerationInProgressError(RuntimeError):
@@ -106,7 +110,7 @@ class RvForecastStore:
             return None
         try:
             return json.loads(lock.read_text(encoding="utf-8"))
-        except Exception:
+        except Exception:  # noqa: BLE001 - an unparseable lock still means a regeneration is underway; see below
             # A lock we cannot parse still means "something is staging" — the safe reading is
             # that a regeneration is underway, not that it is absent.
             return {"target": None, "started_at": None, "unparseable": True}
@@ -157,6 +161,7 @@ class RvForecastStore:
                 lf = lf.filter(pl.col("symbol").is_in([s.upper() for s in symbols]))
             df = lf.collect()
         except Exception:
+            logger.warning("forecast read failed at %s; an empty frame is returned", glob, exc_info=True)
             return self._empty()
 
         if df.is_empty():
@@ -198,6 +203,7 @@ class RvForecastStore:
                 lf = lf.filter(pl.col("symbol").is_in([s.upper() for s in symbols]))
             df = lf.collect()
         except Exception:
+            logger.warning("forecast read failed at %s; an empty frame is returned", glob, exc_info=True)
             return self._empty()
         if df.is_empty():
             return self._empty()
@@ -345,6 +351,7 @@ class RvForecastStore:
                 existing = existing.join(clean.select("symbol"), on="symbol", how="anti")
                 merged = pl.concat([existing, clean], how="vertical_relaxed")
             except Exception:
+                logger.warning("existing partition %s is unreadable and is overwritten", existing_file, exc_info=True)
                 merged = clean
         else:
             merged = clean
