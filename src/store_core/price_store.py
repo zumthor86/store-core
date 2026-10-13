@@ -13,7 +13,6 @@ prices directory explicitly.
 """
 from __future__ import annotations
 
-import logging
 import os
 import tempfile
 from datetime import date, datetime
@@ -31,9 +30,6 @@ DateLike = Union[date, datetime, str]
 
 _DEFAULT_BASE_DIR = "data/prices"
 _MIN_DATE = "1900-01-01"
-
-
-logger = logging.getLogger(__name__)
 
 
 def _default_base_dir() -> str:
@@ -132,8 +128,8 @@ class PriceStore:
         to disambiguate a ticker dual-listed on a foreign exchange). Drops
         symbols with fewer than ``min_data_points`` rows when > 0.
 
-        Returns an empty DataFrame on any error or when nothing matches — a
-        missing store is a normal "no data" case, not an exception.
+        Returns an empty DataFrame when nothing matches or the store holds no file
+        yet: that is the normal "no data" case. A store that cannot be read raises.
         """
         start = _to_date(start_date, fallback=_to_date(_MIN_DATE, fallback=date(1900, 1, 1)))
         end = _to_date(end_date, fallback=date.today())
@@ -143,20 +139,16 @@ class PriceStore:
         end_pl = pl.lit(end)
 
         variant_to_canonical: dict[str, str] = {}
-        try:
-            lf = pl.scan_parquet(glob, hive_partitioning=True)
-            lf = lf.filter((pl.col("date") >= start_pl) & (pl.col("date") <= end_pl))
-            if symbols is not None:
-                expanded, variant_to_canonical = _dot_dash_variants(list(symbols))
-                lf = lf.filter(pl.col("symbol").is_in(expanded))
-            if exchanges:
-                lf = lf.filter(pl.col("exchange").is_in([e.strip().upper() for e in exchanges]))
-            df = lf.collect()
-        except Exception:
-            # a store that does not exist yet is the normal "no data" case
-            logger.log(logging.WARNING if self.base_dir.exists() else logging.DEBUG,
-                       "price read failed at %s; an empty frame is returned", self.base_dir, exc_info=True)
+        if next(self.base_dir.glob("**/*.parquet"), None) is None:
             return pl.DataFrame()
+        lf = pl.scan_parquet(glob, hive_partitioning=True)
+        lf = lf.filter((pl.col("date") >= start_pl) & (pl.col("date") <= end_pl))
+        if symbols is not None:
+            expanded, variant_to_canonical = _dot_dash_variants(list(symbols))
+            lf = lf.filter(pl.col("symbol").is_in(expanded))
+        if exchanges:
+            lf = lf.filter(pl.col("exchange").is_in([e.strip().upper() for e in exchanges]))
+        df = lf.collect()
 
         if df.is_empty():
             return pl.DataFrame()

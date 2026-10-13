@@ -141,6 +141,15 @@ def test_an_unreadable_partition_stops_the_write_and_is_left_as_it_is(store):
     assert [p.name for p in part_file.parent.iterdir()] == [part_file.name]
 
 
+def test_an_unreadable_partition_makes_the_read_raise(store):
+    store.write_date_partition(_rows(["AAPL"]), date(2024, 1, 2), M1)
+    next(store.base_dir.rglob("*.parquet")).write_bytes(b"not a parquet file")
+    with pytest.raises(Exception, match="(?i)parquet|magic"):
+        store.read()
+    with pytest.raises(Exception, match="(?i)parquet|magic"):
+        store.read_staged(M1)
+
+
 # --- regeneration: readers never see a mixture (FR-015, FR-016) -------------------------
 
 

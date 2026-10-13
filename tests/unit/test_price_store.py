@@ -146,3 +146,16 @@ def test_remove_is_idempotent_when_nothing_to_delete(store):
     store.upsert(_rows("TSEM", "TA", ["2025-01-02"]), "TA", "TSEM")
     assert store.remove("TA", "TSEM") is True
     assert store.remove("TA", "TSEM") is False
+
+
+def test_an_unreadable_store_raises(tmp_path):
+    """A store with no file yet is "no data". A store that cannot be read is not."""
+    part = tmp_path / "exchange=US" / "symbol=AAA"
+    part.mkdir(parents=True)
+    (part / "data.parquet").write_bytes(b"not a parquet file")
+    with pytest.raises(Exception, match="(?i)parquet|magic"):
+        PriceStore(base_dir=tmp_path).read(symbols=["AAA"])
+
+
+def test_an_empty_store_folder_returns_empty(tmp_path):
+    assert PriceStore(base_dir=tmp_path).read(symbols=["AAA"]).is_empty()

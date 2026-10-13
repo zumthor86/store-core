@@ -23,7 +23,6 @@ quality gate that guards promotion lives in the producer, one level above.
 """
 from __future__ import annotations
 
-import logging
 import json
 import os
 import shutil
@@ -42,9 +41,6 @@ _DEFAULT_BASE_DIR = "data/rv_forecast"
 _CURRENT = "CURRENT"
 _LOCK = "REGENERATING"
 _PART_FILE = "part.parquet"
-
-
-logger = logging.getLogger(__name__)
 
 
 class RegenerationInProgressError(RuntimeError):
@@ -154,15 +150,14 @@ class RvForecastStore:
         glob = str(self._methodology_dir(active) / "**" / _PART_FILE)
         start = _to_date(start_date, date(1900, 1, 1))
         end = _to_date(end_date, date.today())
-        try:
-            lf = pl.scan_parquet(glob, hive_partitioning=True)
-            lf = lf.filter((pl.col("date") >= pl.lit(start)) & (pl.col("date") <= pl.lit(end)))
-            if symbols is not None:
-                lf = lf.filter(pl.col("symbol").is_in([s.upper() for s in symbols]))
-            df = lf.collect()
-        except Exception:
-            logger.warning("forecast read failed at %s; an empty frame is returned", glob, exc_info=True)
+        # A methodology with no partition yet has nothing to read; one that cannot be read raises.
+        if next(self._methodology_dir(active).glob(f"**/{_PART_FILE}"), None) is None:
             return self._empty()
+        lf = pl.scan_parquet(glob, hive_partitioning=True)
+        lf = lf.filter((pl.col("date") >= pl.lit(start)) & (pl.col("date") <= pl.lit(end)))
+        if symbols is not None:
+            lf = lf.filter(pl.col("symbol").is_in([s.upper() for s in symbols]))
+        df = lf.collect()
 
         if df.is_empty():
             return self._empty()
@@ -196,15 +191,14 @@ class RvForecastStore:
         glob = str(target / "**" / _PART_FILE)
         start = _to_date(start_date, date(1900, 1, 1))
         end = _to_date(end_date, date.today())
-        try:
-            lf = pl.scan_parquet(glob, hive_partitioning=True)
-            lf = lf.filter((pl.col("date") >= pl.lit(start)) & (pl.col("date") <= pl.lit(end)))
-            if symbols is not None:
-                lf = lf.filter(pl.col("symbol").is_in([s.upper() for s in symbols]))
-            df = lf.collect()
-        except Exception:
-            logger.warning("forecast read failed at %s; an empty frame is returned", glob, exc_info=True)
+        # A methodology with no partition yet has nothing to read; one that cannot be read raises.
+        if next(target.glob(f"**/{_PART_FILE}"), None) is None:
             return self._empty()
+        lf = pl.scan_parquet(glob, hive_partitioning=True)
+        lf = lf.filter((pl.col("date") >= pl.lit(start)) & (pl.col("date") <= pl.lit(end)))
+        if symbols is not None:
+            lf = lf.filter(pl.col("symbol").is_in([s.upper() for s in symbols]))
+        df = lf.collect()
         if df.is_empty():
             return self._empty()
         ordered = ["symbol", "date"] + [c for c in RV_FORECAST_COLUMNS if c != "symbol"]
