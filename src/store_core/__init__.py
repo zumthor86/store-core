@@ -19,6 +19,8 @@ from .rv_forecast_store import (
 from .types import (
     BAR_COLUMNS,
     BAR_POLARS_SCHEMA,
+    CONTRACT_COLUMNS,
+    CONTRACT_POLARS_SCHEMA,
     EOD_COLUMNS,
     OHLCV_FLOAT_COLUMNS,
     PRICE_COLUMNS,
@@ -27,12 +29,18 @@ from .types import (
     RV_FORECAST_HORIZONS,
     RV_FORECAST_PARQUET_SCHEMA,
     RV_FORECAST_VALUE_COLUMNS,
+    ROLL_COLUMNS,
+    ROLL_POLARS_SCHEMA,
 )
 
 __all__ = [
     "BarStore",
     "BAR_COLUMNS",
     "BAR_POLARS_SCHEMA",
+    "CONTRACT_COLUMNS",
+    "CONTRACT_POLARS_SCHEMA",
+    "ROLL_COLUMNS",
+    "ROLL_POLARS_SCHEMA",
     "PriceStore",
     "PRICE_COLUMNS",
     "OHLCV_FLOAT_COLUMNS",

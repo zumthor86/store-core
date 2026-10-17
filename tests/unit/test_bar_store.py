@@ -91,3 +91,54 @@ def test_bad_frames_are_rejected_and_leave_the_old_series(store, mutate, message
     with pytest.raises(ValueError, match=message):
         store.replace(mutate(_bars(datetime(2025, 1, 2, 9, 30), 3, price=500.0)), "GC", "databento")
     assert store.read("GC", "databento")["open"].to_list() == good["open"].cast(pl.Float64).to_list()
+
+
+def _contracts(*ids: int) -> pl.DataFrame:
+    return pl.DataFrame({
+        "instrument_id": list(ids), "root": ["CL"] * len(ids), "raw_symbol": [f"CL{i}" for i in ids],
+        "expiration": [date(2026, 10, 20)] * len(ids), "micro_raw_symbol": [f"MCL{i}" for i in ids],
+        "micro_expiration": [date(2026, 10, 19)] * len(ids), "first_notice": [None] * len(ids),
+        "cut_off": [date(2026, 10, 19)] * len(ids),
+    })
+
+
+def _rolls(*times: datetime, old: int = 41, new: int = 42) -> pl.DataFrame:
+    return pl.DataFrame({
+        "roll_at": list(times), "old_id": [old] * len(times), "new_id": [new] * len(times),
+        "ratio": [1.01] * len(times), "matched_at": list(times), "method": ["same_hour"] * len(times),
+    }).with_columns(pl.col("roll_at", "matched_at").dt.replace_time_zone("UTC"))
+
+
+def test_contract_and_roll_tables_round_trip(store):
+    store.replace(_bars(datetime(2026, 10, 16, 9, 30), 3), "CL", "databento",
+                  contracts=_contracts(41, 42), rolls=_rolls(datetime(2026, 10, 16, 21, 0)))
+    assert store.read_contracts("CL", "databento")["raw_symbol"].to_list() == ["CL41", "CL42"]
+    assert store.read_rolls("CL", "databento")["new_id"].to_list() == [42]
+
+
+def test_a_bar_contract_missing_from_the_table_is_refused(store):
+    with pytest.raises(ValueError, match="no contract"):
+        store.replace(_bars(datetime(2026, 10, 16, 9, 30), 3), "CL", "databento", contracts=_contracts(41))
+
+
+def test_roll_times_must_increase(store):
+    t = datetime(2026, 10, 16, 21, 0)
+    with pytest.raises(ValueError, match="strictly increase"):
+        store.replace(_bars(t, 3), "CL", "databento", contracts=_contracts(41, 42), rolls=_rolls(t, t))
+
+
+def test_a_replace_without_tables_leaves_none_and_a_read_says_so(store):
+    store.replace(_bars(datetime(2026, 10, 16, 9, 30), 3), "CL", "databento", contracts=_contracts(41, 42))
+    store.replace(_bars(datetime(2026, 10, 16, 9, 30), 3), "CL", "databento")
+    with pytest.raises(LookupError):
+        store.read_contracts("CL", "databento")
+    with pytest.raises(LookupError):
+        store.read_rolls("CL", "databento")
+
+
+def test_a_refused_table_keeps_the_previous_series(store):
+    store.replace(_bars(datetime(2026, 10, 16, 9, 30), 3), "CL", "databento", contracts=_contracts(41, 42))
+    with pytest.raises(ValueError):
+        store.replace(_bars(datetime(2026, 10, 16, 9, 30), 5), "CL", "databento", contracts=_contracts(7))
+    assert store.read("CL", "databento").height == 3
+    assert store.read_contracts("CL", "databento").height == 2

@@ -115,3 +115,31 @@ BAR_POLARS_SCHEMA: dict = {
     # True where the producer clipped an off-market print. Null where the producer does not de-spike.
     "despiked": pl.Boolean,
 }
+
+#: A futures series' contracts, beside its bars (``contracts.parquet``): one row per ``instrument_id`` in the bars.
+CONTRACT_COLUMNS: tuple[str, ...] = (
+    "instrument_id", "root", "raw_symbol", "expiration", "micro_raw_symbol", "micro_expiration", "first_notice", "cut_off",
+)
+
+CONTRACT_POLARS_SCHEMA: dict = {
+    "instrument_id": pl.UInt32,
+    "root": pl.Utf8,
+    "raw_symbol": pl.Utf8,             # the full-size contract the bars are, e.g. CLZ6
+    "expiration": pl.Date,             # its last trading day
+    "micro_raw_symbol": pl.Utf8,       # the micro of the same month, the one the live sleeves trade, e.g. MCLZ6
+    "micro_expiration": pl.Date,
+    "first_notice": pl.Date,           # physically delivered micros only (MGC); null otherwise
+    "cut_off": pl.Date,                # the day the series must have left this contract by
+}
+
+#: A futures series' rolls (``rolls.parquet``): where the splice is and what it multiplied the history by.
+ROLL_COLUMNS: tuple[str, ...] = ("roll_at", "old_id", "new_id", "ratio", "matched_at", "method")
+
+ROLL_POLARS_SCHEMA: dict = {
+    "roll_at": pl.Datetime("us", "UTC"),      # the first bar of the incoming contract starts after this time
+    "old_id": pl.UInt32,
+    "new_id": pl.UInt32,
+    "ratio": pl.Float64,                      # incoming / outgoing close; everything before is multiplied by it
+    "matched_at": pl.Datetime("us", "UTC"),   # the hour whose two closes priced the ratio
+    "method": pl.Utf8,                        # same_hour or gap_fallback
+}
