@@ -40,6 +40,14 @@ def _as_date(value: DateLike) -> date:
     return date.fromisoformat(value)
 
 
+def _check_columns(frame: pl.DataFrame, allowed, what: str) -> None:
+    """Raise unless the frame has exactly the allowed columns (an allow-list: a stray column is never persisted)."""
+    missing = [c for c in allowed if c not in frame.columns]
+    extra = [c for c in frame.columns if c not in allowed]
+    if missing or extra:
+        raise ValueError(f"{what} columns: missing {missing}, unexpected {extra}")
+
+
 class BarStore:
     """Read/replace access to the intraday bar store."""
 
@@ -107,14 +115,11 @@ class BarStore:
     def validate(df: pl.DataFrame) -> pl.DataFrame:
         """Cast to the schema of record. Raises on a missing or extra column (an allow-list: a stray
         column must never be persisted), on duplicate or unsorted bar times, and on null prices."""
-        missing = [c for c in BAR_COLUMNS if c not in df.columns]
-        extra = [c for c in df.columns if c not in BAR_COLUMNS]
-        if missing or extra:
-            raise ValueError(f"bar frame columns: missing {missing}, unexpected {extra}")
+        _check_columns(df, BAR_COLUMNS, "bar frame")
         out = df.select([pl.col(c).cast(t) for c, t in BAR_POLARS_SCHEMA.items()])
         if out.height == 0:
             raise ValueError("empty bar frame")
-        if out["start"].null_count() or out["session"].null_count():
+        if sum(out[c].null_count() for c in ("start", "session")):
             raise ValueError("null start or session")
         if sum(out[c].null_count() for c in ("open", "high", "low", "close")):
             raise ValueError("null price")
@@ -130,10 +135,7 @@ class BarStore:
         """Cast the contract and roll tables to their schemas (allow-lists, like the bars) and check they fit the bars:
         every bar's ``instrument_id`` has a contract, roll times strictly increase, and every roll names known contracts."""
         def cast(frame: pl.DataFrame, schema: dict, what: str) -> pl.DataFrame:
-            missing = [c for c in schema if c not in frame.columns]
-            extra = [c for c in frame.columns if c not in schema]
-            if missing or extra:
-                raise ValueError(f"{what} columns: missing {missing}, unexpected {extra}")
+            _check_columns(frame, schema, what)
             return frame.select([pl.col(c).cast(t) for c, t in schema.items()])
 
         c = r = None

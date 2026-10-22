@@ -55,6 +55,13 @@ def _default_base_dir() -> str:
     return os.environ.get("RV_FORECAST_DIR", _DEFAULT_BASE_DIR)
 
 
+def _column_order(columns: Sequence[str]) -> list[str]:
+    """Symbol and date first, then the canonical forecast columns that are present, then any others."""
+    ordered = ["symbol", "date"] + [c for c in RV_FORECAST_COLUMNS if c != "symbol"]
+    ordered = [c for c in ordered if c in columns]
+    return ordered + [c for c in columns if c not in ordered]
+
+
 def _to_date(value: Optional[DateLike], fallback: date) -> date:
     if value is None:
         return fallback
@@ -147,11 +154,16 @@ class RvForecastStore:
                 f"the history was regenerated underneath this read"
             )
 
-        glob = str(self._methodology_dir(active) / "**" / _PART_FILE)
+        return self._read_panel(self._methodology_dir(active), symbols, start_date, end_date)
+
+    def _read_panel(self, target: Path, symbols: Optional[Sequence[str]], start_date: Optional[DateLike],
+                    end_date: Optional[DateLike]) -> pl.DataFrame:
+        """The records under one methodology directory, in column order, sorted by symbol and date."""
+        glob = str(target / "**" / _PART_FILE)
         start = _to_date(start_date, date(1900, 1, 1))
         end = _to_date(end_date, date.today())
         # A methodology with no partition yet has nothing to read; one that cannot be read raises.
-        if next(self._methodology_dir(active).glob(f"**/{_PART_FILE}"), None) is None:
+        if next(target.glob(f"**/{_PART_FILE}"), None) is None:
             return self._empty()
         lf = pl.scan_parquet(glob, hive_partitioning=True)
         lf = lf.filter((pl.col("date") >= pl.lit(start)) & (pl.col("date") <= pl.lit(end)))
@@ -161,10 +173,7 @@ class RvForecastStore:
 
         if df.is_empty():
             return self._empty()
-        ordered = ["symbol", "date"] + [c for c in RV_FORECAST_COLUMNS if c not in ("symbol",)]
-        ordered = [c for c in ordered if c in df.columns]
-        ordered += [c for c in df.columns if c not in ordered]
-        return df.select(ordered).sort(["symbol", "date"])
+        return df.select(_column_order(df.columns)).sort(["symbol", "date"])
 
     def read_staged(
         self,
@@ -188,23 +197,7 @@ class RvForecastStore:
         if not target.exists():
             raise FileNotFoundError(f"no methodology staged at {target}")
 
-        glob = str(target / "**" / _PART_FILE)
-        start = _to_date(start_date, date(1900, 1, 1))
-        end = _to_date(end_date, date.today())
-        # A methodology with no partition yet has nothing to read; one that cannot be read raises.
-        if next(target.glob(f"**/{_PART_FILE}"), None) is None:
-            return self._empty()
-        lf = pl.scan_parquet(glob, hive_partitioning=True)
-        lf = lf.filter((pl.col("date") >= pl.lit(start)) & (pl.col("date") <= pl.lit(end)))
-        if symbols is not None:
-            lf = lf.filter(pl.col("symbol").is_in([s.upper() for s in symbols]))
-        df = lf.collect()
-        if df.is_empty():
-            return self._empty()
-        ordered = ["symbol", "date"] + [c for c in RV_FORECAST_COLUMNS if c != "symbol"]
-        ordered = [c for c in ordered if c in df.columns]
-        ordered += [c for c in df.columns if c not in ordered]
-        return df.select(ordered).sort(["symbol", "date"])
+        return self._read_panel(target, symbols, start_date, end_date)
 
     def read_latest(self, symbols: Optional[Sequence[str]] = None) -> pl.DataFrame:
         """Most recent record per symbol, each carrying its own date and ``measures_date`` so a
@@ -354,6 +347,32 @@ class RvForecastStore:
         merged = merged.unique(subset=["symbol"], keep="last").sort("symbol")
         return self._write_partition_file(part_dir, merged)
 
+    def _check_span_rewrite(self, methodology_id: str, start_date: date, end_date: date) -> str:
+        """Raise unless a same-methodology span rewrite may run now; returns the active methodology."""
+        active = self.active_methodology()
+        if active is None:
+            raise MethodologyMismatchError("cannot rewrite a span in an empty store")
+        if methodology_id != active:
+            raise MethodologyMismatchError(
+                f"rewrite_span is a same-methodology correction; store holds {active!r}, "
+                f"caller passed {methodology_id!r}"
+            )
+        if self.regeneration_in_progress() is not None:
+            raise RegenerationInProgressError("cannot rewrite a span while a regeneration stages")
+        if start_date > end_date:
+            raise ValueError(f"empty span: {start_date} > {end_date}")
+        return active
+
+    def _span_partitions(self, methodology_id: str, start_date: date, end_date: date):
+        """(date, directory) of each partition that holds a file inside the closed span, oldest first."""
+        for part in sorted(self._methodology_dir(methodology_id).glob("date=*")):
+            try:
+                d = date.fromisoformat(part.name.split("=", 1)[1])
+            except (ValueError, IndexError):
+                continue
+            if start_date <= d <= end_date and (part / _PART_FILE).exists():
+                yield d, part
+
     def rewrite_span(
         self,
         df: pl.DataFrame,
@@ -373,18 +392,7 @@ class RvForecastStore:
         slipping in a different model. The span is the caller's to compute — a restated date
         invalidates forecasts forward by the whole fit window, not just itself.
         """
-        active = self.active_methodology()
-        if active is None:
-            raise MethodologyMismatchError("cannot rewrite a span in an empty store")
-        if methodology_id != active:
-            raise MethodologyMismatchError(
-                f"rewrite_span is a same-methodology correction; store holds {active!r}, "
-                f"caller passed {methodology_id!r}"
-            )
-        if self.regeneration_in_progress() is not None:
-            raise RegenerationInProgressError("cannot rewrite a span while a regeneration stages")
-        if start_date > end_date:
-            raise ValueError(f"empty span: {start_date} > {end_date}")
+        active = self._check_span_rewrite(methodology_id, start_date, end_date)
 
         if "date" not in df.columns:
             raise ValueError("rewrite_span needs a 'date' column to place each replacement record")
@@ -397,17 +405,8 @@ class RvForecastStore:
             by_date[d] = self._validate_frame(g.drop("date"), methodology_id)
 
         written = 0
-        for part in sorted(self._methodology_dir(active).glob("date=*")):
-            try:
-                d = date.fromisoformat(part.name.split("=", 1)[1])
-            except (ValueError, IndexError):
-                continue
-            if not (start_date <= d <= end_date):
-                continue
-            file = part / _PART_FILE
-            if not file.exists():
-                continue
-            existing = pl.read_parquet(file)
+        for d, part in self._span_partitions(active, start_date, end_date):
+            existing = pl.read_parquet(part / _PART_FILE)
             others = existing.filter(pl.col("symbol") != symbol.upper())
             replacement = by_date.get(d)
             if replacement is not None:
