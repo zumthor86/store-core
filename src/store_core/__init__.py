@@ -10,6 +10,7 @@ Storage only: no scheduling, no HTTP, and no domain logic.
 from __future__ import annotations
 
 from .bar_store import BarStore
+from .option_quote_reader import OptionQuoteReader
 from .price_store import PriceStore
 from .rv_forecast_store import (
     MethodologyMismatchError,
@@ -41,6 +42,7 @@ __all__ = [
     "CONTRACT_POLARS_SCHEMA",
     "ROLL_COLUMNS",
     "ROLL_POLARS_SCHEMA",
+    "OptionQuoteReader",
     "PriceStore",
     "PRICE_COLUMNS",
     "OHLCV_FLOAT_COLUMNS",
